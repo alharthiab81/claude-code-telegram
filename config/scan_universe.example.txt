@@ -1,0 +1,23 @@
+# Ticker universe for the pre-market movers scan (src/market/premarket_scan.py)
+#
+# One US ticker per line. Lines starting with # are ignored.
+# Copy this file to config/scan_universe.txt and edit freely — that's the
+# file the scanner actually reads (config/scan_universe.txt is gitignored
+# so you can tune it per-deployment without it showing up in diffs).
+#
+# Shipped default: Nasdaq-100 constituents (large, liquid, heavily news-
+# covered — the names most likely to have real analyst coverage and same-
+# day headlines) plus a few extra large/mega-caps. This list can drift out
+# of date as index membership changes; treat it as a starting point, not
+# an authoritative feed. Add or remove tickers as you like — including any
+# of your own watchlist names not already covered by WATCHLIST_TICKERS.
+
+AAPL MSFT NVDA AMZN GOOGL GOOG META AVGO TSLA COST
+NFLX AMD PEP ADBE CSCO TMUS INTU QCOM AMAT TXN
+CMCSA HON AMGN BKNG SBUX ISRG VRTX GILD MDLZ ADI
+LRCX PANW REGN MU KLAC PYPL SNPS CDNS MELI ASML
+ORLY CRWD MAR CTAS ABNB MRVL FTNT DASH ADSK NXPI
+WDAY PCAR CHTR PAYX ROP MNST ODFL AEP KDP CPRT
+CSGP FAST EXC ROST BKR VRSK XEL EA CCEP DDOG
+FANG BIIB TTD GEHC ANSS ZS CTSH TEAM ON DXCM
+IDXX GFS CDW WBD ILMN LULU MDB CSX SGEN KHC
