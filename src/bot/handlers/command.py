@@ -1275,3 +1275,41 @@ def _escape_markdown(text: str) -> str:
     Legacy name kept for compatibility with callers; actually escapes HTML.
     """
     return escape_html(text)
+
+
+async def premarket_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /premarket — run the pre-open movers scan on demand."""
+    market_monitor = context.bot_data.get("market_monitor")
+    if not market_monitor:
+        await update.message.reply_text(
+            "Market monitor isn't enabled. Set ENABLE_MARKET_MONITOR=true and "
+            "FINNHUB_API_KEY on the server, then redeploy."
+        )
+        return
+
+    progress_msg = await update.message.reply_text("Scanning for pre-open movers…")
+    try:
+        text = await market_monitor.run_premarket_scan_now()
+        await progress_msg.edit_text(text, parse_mode="Markdown")
+    except Exception as e:
+        logger.exception("On-demand pre-market scan failed")
+        await progress_msg.edit_text(f"Scan failed: {e}")
+
+
+async def watchlist_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /watchlist — show a live snapshot of the configured watchlist."""
+    market_monitor = context.bot_data.get("market_monitor")
+    if not market_monitor:
+        await update.message.reply_text(
+            "Market monitor isn't enabled. Set ENABLE_MARKET_MONITOR=true and "
+            "FINNHUB_API_KEY on the server, then redeploy."
+        )
+        return
+
+    progress_msg = await update.message.reply_text("Fetching watchlist…")
+    try:
+        text = await market_monitor.run_watchlist_check_now()
+        await progress_msg.edit_text(text, parse_mode="Markdown")
+    except Exception as e:
+        logger.exception("On-demand watchlist check failed")
+        await progress_msg.edit_text(f"Watchlist check failed: {e}")
