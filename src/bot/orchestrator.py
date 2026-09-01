@@ -328,6 +328,8 @@ class MessageOrchestrator:
             ("verbose", self.agentic_verbose),
             ("repo", self.agentic_repo),
             ("restart", command.restart_command),
+            ("premarket", command.premarket_command),
+            ("watchlist", command.watchlist_command),
         ]
         if self.settings.enable_project_threads:
             handlers.append(("sync_threads", command.sync_threads))
@@ -417,6 +419,8 @@ class MessageOrchestrator:
             ("actions", command.quick_actions),
             ("git", command.git_command),
             ("restart", command.restart_command),
+            ("premarket", command.premarket_command),
+            ("watchlist", command.watchlist_command),
         ]
         if self.settings.enable_project_threads:
             handlers.append(("sync_threads", command.sync_threads))
@@ -461,6 +465,8 @@ class MessageOrchestrator:
                 BotCommand("verbose", "Set output verbosity (0/1/2)"),
                 BotCommand("repo", "List repos / switch workspace"),
                 BotCommand("restart", "Restart the bot"),
+                BotCommand("premarket", "Pre-open movers scan (top 20)"),
+                BotCommand("watchlist", "Live watchlist snapshot"),
             ]
             if self.settings.enable_project_threads:
                 commands.append(BotCommand("sync_threads", "Sync project topics"))
@@ -481,6 +487,8 @@ class MessageOrchestrator:
                 BotCommand("actions", "Show quick actions"),
                 BotCommand("git", "Git repository commands"),
                 BotCommand("restart", "Restart the bot"),
+                BotCommand("premarket", "Pre-open movers scan (top 20)"),
+                BotCommand("watchlist", "Live watchlist snapshot"),
             ]
             if self.settings.enable_project_threads:
                 commands.append(BotCommand("sync_threads", "Sync project topics"))
@@ -537,7 +545,7 @@ class MessageOrchestrator:
             f"Hi {safe_name}! I'm your AI coding assistant.\n"
             f"Just tell me what you need — I can read, write, and run code.\n\n"
             f"Working in: {dir_display}\n"
-            f"Commands: /new (reset) · /status"
+            f"Commands: /new (reset) · /status · /premarket · /watchlist"
             f"{sync_line}",
             parse_mode="HTML",
         )
