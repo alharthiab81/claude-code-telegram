@@ -19,6 +19,7 @@ from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import
 from telegram import Bot
 from telegram.constants import ParseMode
 
+from ..bot.utils.html_format import escape_html
 from .finnhub_client import FinnhubClient
 from .premarket_scan import format_scan_message, run_scan
 from .watchlist_alerts import AlertState, check_watchlist
@@ -88,7 +89,7 @@ class MarketMonitor:
         for chat_id in self._notify_chat_ids:
             try:
                 await self._bot.send_message(
-                    chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN
+                    chat_id=chat_id, text=text, parse_mode=ParseMode.HTML
                 )
             except Exception:
                 logger.exception("Failed to deliver market monitor message", chat_id=chat_id)
@@ -125,14 +126,15 @@ class MarketMonitor:
 
         lines = []
         for symbol in self._watchlist:
+            safe_symbol = escape_html(symbol)
             quote = await self._client.quote(symbol)
             if not quote or quote.get("c") is None:
-                lines.append(f"*{symbol}*: no data")
+                lines.append(f"<b>{safe_symbol}</b>: no data")
                 continue
             pct = quote.get("dp")
             if pct is None:
                 c, pc = quote.get("c"), quote.get("pc")
                 pct = (c - pc) / pc * 100 if c and pc else 0.0
             arrow = "🟢" if pct >= 0 else "🔴"
-            lines.append(f"{arrow} *{symbol}*: ${quote.get('c'):,.2f} ({pct:+.1f}%)")
-        return "📈 *Watchlist snapshot*\n\n" + "\n".join(lines)
+            lines.append(f"{arrow} <b>{safe_symbol}</b>: ${quote.get('c'):,.2f} ({pct:+.1f}%)")
+        return "📈 <b>Watchlist snapshot</b>\n\n" + "\n".join(lines)

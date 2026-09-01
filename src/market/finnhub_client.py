@@ -93,6 +93,18 @@ class FinnhubClient:
                     # Rate-limited despite our own throttling — back off and retry.
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
+                if 400 <= resp.status_code < 500:
+                    # Any other client error (bad symbol, endpoint not included
+                    # on this API plan, etc.) won't be fixed by retrying — fail
+                    # fast instead of burning the rate-limit budget and the
+                    # caller's time on retries that can only ever repeat the
+                    # same error.
+                    logger.warning(
+                        "Finnhub request rejected, not retrying",
+                        path=path,
+                        status=resp.status_code,
+                    )
+                    return None
                 resp.raise_for_status()
                 return resp.json()
             except httpx.HTTPError as exc:
@@ -137,5 +149,12 @@ class FinnhubClient:
         return data or []
 
     async def price_target(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Analyst price target consensus: targetHigh/Low/Mean/Median."""
+        """Analyst price target consensus: targetHigh/Low/Mean/Median.
+
+        NOTE: unlike the other endpoints on this client, /stock/price-target
+        is gated behind a paid Finnhub plan — free-tier keys get a 403 for
+        every call. Kept here for accounts that do have a paid plan, but
+        premarket_scan.py deliberately does not call this on the free tier
+        (see its _enrich_with_analyst_data).
+        """
         return await self._get("/stock/price-target", {"symbol": symbol})

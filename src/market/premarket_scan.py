@@ -23,6 +23,7 @@ from typing import List, Optional
 
 import structlog
 
+from ..bot.utils.html_format import escape_html
 from .finnhub_client import FinnhubClient
 
 logger = structlog.get_logger()
@@ -177,31 +178,27 @@ async def _scan_one(
 
 
 async def _enrich_with_analyst_data(client: FinnhubClient, candidate: Candidate) -> None:
+    # NOTE: /stock/price-target is a paid-plan-only Finnhub endpoint (403 on
+    # free-tier keys), so we deliberately don't call it here — it would just
+    # burn scan time on a call that can never succeed. recommendation_trends
+    # (buy/hold/sell counts) is available on the free tier and is enough for
+    # a lightweight analyst-sentiment nudge.
     trends = await client.recommendation_trends(candidate.symbol)
-    target = await client.price_target(candidate.symbol)
 
-    if trends:
-        latest = trends[0]
-        buy = latest.get("strongBuy", 0) + latest.get("buy", 0)
-        hold = latest.get("hold", 0)
-        sell = latest.get("sell", 0) + latest.get("strongSell", 0)
-        total = buy + hold + sell
-        parts = [f"{buy} Buy / {hold} Hold / {sell} Sell"]
-        if total:
-            bullish_ratio = buy / total
-            candidate.analyst_bonus += (bullish_ratio - 0.5) * 4  # -2..+2
-    else:
-        parts = []
+    if not trends:
+        return
 
-    if target and target.get("targetMean"):
-        quote_price = None
-        # We don't refetch quote here to save a call; use pct_change-implied
-        # price only if needed later. Just show the raw consensus target.
-        mean = target["targetMean"]
-        parts.append(f"target ${mean:,.2f}")
+    latest = trends[0]
+    buy = latest.get("strongBuy", 0) + latest.get("buy", 0)
+    hold = latest.get("hold", 0)
+    sell = latest.get("sell", 0) + latest.get("strongSell", 0)
+    total = buy + hold + sell
+    if not total:
+        return
 
-    if parts:
-        candidate.analyst_summary = ", ".join(parts)
+    bullish_ratio = buy / total
+    candidate.analyst_bonus += (bullish_ratio - 0.5) * 4  # -2..+2
+    candidate.analyst_summary = f"{buy} Buy / {hold} Hold / {sell} Sell"
 
 
 async def run_scan(
@@ -209,7 +206,7 @@ async def run_scan(
     base_dir: Path,
     lookback_hours: int = 18,
     top_n: int = 20,
-    enrich_top: int = 30,
+    enrich_top: int = 15,
 ) -> List[Candidate]:
     """Run the full scan and return the top_n candidates, best first."""
     universe = load_universe(base_dir)
@@ -242,28 +239,39 @@ async def run_scan(
 
 
 def format_scan_message(candidates: List[Candidate]) -> str:
+    """Format results as Telegram HTML.
+
+    Uses HTML rather than legacy Markdown: headlines/sources come from
+    Finnhub and can contain unmatched * _ ` [ ] characters that make
+    Telegram's Markdown parser reject the whole message. HTML only needs
+    the 3 characters escape_html() handles, so it's robust against
+    arbitrary news text.
+    """
     if not candidates:
         return (
-            "📊 *Pre-open movers scan*\n\n"
+            "📊 <b>Pre-open movers scan</b>\n\n"
             "No tickers in the scan universe showed fresh news in the lookback "
             "window. Nothing to report this run."
         )
 
     lines = [
-        "📊 *Pre-open movers scan — top optimistic names*",
-        "_Ranked by last session's move + fresh news + analyst sentiment. "
+        "📊 <b>Pre-open movers scan — top optimistic names</b>",
+        "<i>Ranked by last session's move + fresh news + analyst sentiment. "
         "Not live pre-market tape (see caveat in finnhub_client.py). "
-        "Not financial advice._",
+        "Not financial advice.</i>",
         "",
     ]
     for i, c in enumerate(candidates, start=1):
         arrow = "🟢" if c.pct_change >= 0 else "🔴"
-        line = f"{i}. *{c.symbol}* {arrow} {c.pct_change:+.1f}%"
+        symbol = escape_html(c.symbol)
+        line = f"{i}. <b>{symbol}</b> {arrow} {c.pct_change:+.1f}%"
         if c.news:
             top_news = c.news[0]
-            line += f"\n   📰 {top_news.headline} ({top_news.source})"
+            headline = escape_html(top_news.headline)
+            source = escape_html(top_news.source)
+            line += f"\n   📰 {headline} ({source})"
         if c.analyst_summary:
-            line += f"\n   🧑‍💼 {c.analyst_summary}"
+            line += f"\n   🧑‍💼 {escape_html(c.analyst_summary)}"
         lines.append(line)
 
     return "\n".join(lines)

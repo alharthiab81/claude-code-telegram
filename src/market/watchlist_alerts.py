@@ -15,6 +15,7 @@ from typing import Dict, List, Optional
 
 import structlog
 
+from ..bot.utils.html_format import escape_html
 from .finnhub_client import FinnhubClient
 
 logger = structlog.get_logger()
@@ -82,7 +83,7 @@ async def check_watchlist(
         arrow = "🟢🚀" if direction == "up" else "🔴⚠️"
         price = quote.get("c")
         messages.append(
-            f"{arrow} *{symbol}* moved {pct_change:+.1f}% "
+            f"{arrow} <b>{escape_html(symbol)}</b> moved {pct_change:+.1f}% "
             f"(now ${price:,.2f}) — past your {threshold_pct:.0f}% alert threshold."
         )
         state.mark_fired(symbol, direction)
