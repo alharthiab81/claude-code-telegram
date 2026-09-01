@@ -25,6 +25,7 @@ from src.events.middleware import EventSecurityMiddleware
 from src.exceptions import ConfigurationError
 from src.notifications.service import NotificationService
 from src.projects import ProjectThreadManager, load_project_registry
+from src.market.monitor import MarketMonitor
 from src.scheduler.scheduler import JobScheduler
 from src.security.audit import AuditLogger, InMemoryAuditStorage
 from src.security.auth import (
@@ -216,6 +217,7 @@ async def run_application(app: Dict[str, Any]) -> None:
 
     notification_service: Optional[NotificationService] = None
     scheduler: Optional[JobScheduler] = None
+    market_monitor: Optional[MarketMonitor] = None
     project_threads_manager: Optional[ProjectThreadManager] = None
 
     # Set up signal handlers for graceful shutdown
@@ -316,6 +318,35 @@ async def run_application(app: Dict[str, Any]) -> None:
             await scheduler.start()
             logger.info("Job scheduler enabled")
 
+        # Market monitor: pre-open scanner + watchlist price alerts.
+        # Independent of the Claude JobScheduler above — no LLM calls involved.
+        if features.market_monitor_enabled:
+            notify_chat_ids = (
+                config.market_notify_chat_ids or config.notification_chat_ids or []
+            )
+            if not notify_chat_ids:
+                logger.warning(
+                    "Market monitor enabled but no MARKET_NOTIFY_CHAT_IDS or "
+                    "NOTIFICATION_CHAT_IDS configured — messages have nowhere to go"
+                )
+            market_monitor = MarketMonitor(
+                bot=telegram_bot,
+                finnhub_api_key=config.finnhub_api_key,
+                watchlist=config.market_watchlist or [],
+                alert_threshold_pct=config.market_alert_threshold_pct,
+                notify_chat_ids=notify_chat_ids,
+                # config/scan_universe.txt lives at the repo root, not the
+                # Claude "approved_directory" (which points at your projects
+                # dir) — resolve relative to this file instead.
+                base_dir=Path(__file__).resolve().parent.parent,
+                premarket_scan_hour_et=config.premarket_scan_hour_et,
+                premarket_scan_minute_et=config.premarket_scan_minute_et,
+                watchlist_poll_minutes=config.watchlist_poll_minutes,
+            )
+            await market_monitor.start()
+            bot.deps["market_monitor"] = market_monitor
+            logger.info("Market monitor enabled")
+
         # Shutdown task
         shutdown_task = asyncio.create_task(shutdown_event.wait())
         tasks.append(shutdown_task)
@@ -354,6 +385,8 @@ async def run_application(app: Dict[str, Any]) -> None:
         try:
             if scheduler:
                 await scheduler.stop()
+            if market_monitor:
+                await market_monitor.stop()
             if notification_service:
                 await notification_service.stop()
             await event_bus.stop()
