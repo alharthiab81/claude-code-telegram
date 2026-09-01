@@ -330,11 +330,55 @@ class Settings(BaseSettings):
         ge=0.0,
     )
 
+    # --- Market monitor (pre-open scan + watchlist alerts) ---
+    enable_market_monitor: bool = Field(
+        False, description="Enable the pre-open scanner and watchlist alerts"
+    )
+    finnhub_api_key: Optional[str] = Field(
+        None, description="Finnhub API key (free tier) for market data/news"
+    )
+    market_watchlist: Optional[List[str]] = Field(
+        None, description="Comma-separated tickers to watch for price-move alerts"
+    )
+    market_alert_threshold_pct: float = Field(
+        5.0, description="Intraday % move that triggers a watchlist alert", gt=0.0
+    )
+    market_notify_chat_ids: Optional[List[int]] = Field(
+        None,
+        description=(
+            "Chat IDs for market monitor messages; falls back to "
+            "notification_chat_ids if unset"
+        ),
+    )
+    premarket_scan_hour_et: int = Field(
+        8, description="Hour (US/Eastern, 24h) to run the daily pre-open scan", ge=0, le=23
+    )
+    premarket_scan_minute_et: int = Field(
+        30, description="Minute (US/Eastern) to run the daily pre-open scan", ge=0, le=59
+    )
+    watchlist_poll_minutes: int = Field(
+        15, description="How often (minutes) to poll watchlist tickers for alerts", ge=1
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
-    @field_validator("allowed_users", "notification_chat_ids", mode="before")
+    @field_validator("market_watchlist", mode="before")
+    @classmethod
+    def parse_market_watchlist(cls, v: Any) -> Optional[List[str]]:
+        """Parse comma-separated ticker lists, upper-cased."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return [t.strip().upper() for t in v.split(",") if t.strip()]
+        if isinstance(v, list):
+            return [str(t).strip().upper() for t in v]
+        return v  # type: ignore[no-any-return]
+
+    @field_validator(
+        "allowed_users", "notification_chat_ids", "market_notify_chat_ids", mode="before"
+    )
     @classmethod
     def parse_int_list(cls, v: Any) -> Optional[List[int]]:
         """Parse comma-separated integer lists."""

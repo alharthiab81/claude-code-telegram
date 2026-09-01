@@ -67,6 +67,11 @@ class FeatureFlags:
         return self.settings.enable_scheduler
 
     @property
+    def market_monitor_enabled(self) -> bool:
+        """Check if the pre-open scanner + watchlist alerts are enabled."""
+        return self.settings.enable_market_monitor and bool(self.settings.finnhub_api_key)
+
+    @property
     def agentic_mode_enabled(self) -> bool:
         """Check if agentic conversational mode is enabled."""
         return self.settings.agentic_mode
