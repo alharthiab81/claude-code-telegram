@@ -1,5 +1,6 @@
 """Command handlers for bot operations."""
 
+import asyncio
 import os
 import signal
 from datetime import datetime, timezone
@@ -1278,7 +1279,18 @@ def _escape_markdown(text: str) -> str:
 
 
 async def premarket_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /premarket — run the pre-open movers scan on demand."""
+    """Handle /premarket — run the pre-open movers scan on demand.
+
+    The scan can take a couple of minutes (it walks the whole scan
+    universe, one Finnhub call at a time, to stay under the free-tier
+    rate limit). The bot processes updates sequentially (see
+    update_processor.py), so awaiting the scan directly in this handler
+    would freeze every other command — including plain chat messages —
+    until it finished. Instead we kick the scan off as a background task
+    and return immediately, so the sequential lock is released right
+    away and the bot keeps responding to everything else while the scan
+    runs; the progress message is edited in place once results are in.
+    """
     market_monitor = context.bot_data.get("market_monitor")
     if not market_monitor:
         await update.message.reply_text(
@@ -1287,17 +1299,35 @@ async def premarket_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
         return
 
-    progress_msg = await update.message.reply_text("Scanning for pre-open movers…")
-    try:
-        text = await market_monitor.run_premarket_scan_now()
-        await progress_msg.edit_text(text, parse_mode="Markdown")
-    except Exception as e:
-        logger.exception("On-demand pre-market scan failed")
-        await progress_msg.edit_text(f"Scan failed: {e}")
+    progress_msg = await update.message.reply_text(
+        "Scanning for pre-open movers… this can take a couple of minutes — "
+        "I'll edit this message when it's ready. The bot stays available "
+        "for other commands in the meantime."
+    )
+
+    async def _run_scan() -> None:
+        try:
+            text = await market_monitor.run_premarket_scan_now()
+            await progress_msg.edit_text(text, parse_mode="HTML")
+        except Exception as e:
+            logger.exception("On-demand pre-market scan failed")
+            try:
+                await progress_msg.edit_text(f"Scan failed: {escape_html(str(e))}")
+            except Exception:
+                logger.exception("Failed to report pre-market scan failure")
+
+    asyncio.create_task(_run_scan())
 
 
 async def watchlist_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /watchlist — show a live snapshot of the configured watchlist."""
+    """Handle /watchlist — show a live snapshot of the configured watchlist.
+
+    Runs in the background for the same reason as /premarket above: it
+    makes one Finnhub call per watchlist symbol, and awaiting that
+    directly here would hold the bot's sequential-update lock (see
+    update_processor.py) for the whole fetch, freezing every other
+    command until it finished.
+    """
     market_monitor = context.bot_data.get("market_monitor")
     if not market_monitor:
         await update.message.reply_text(
@@ -1307,9 +1337,16 @@ async def watchlist_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     progress_msg = await update.message.reply_text("Fetching watchlist…")
-    try:
-        text = await market_monitor.run_watchlist_check_now()
-        await progress_msg.edit_text(text, parse_mode="Markdown")
-    except Exception as e:
-        logger.exception("On-demand watchlist check failed")
-        await progress_msg.edit_text(f"Watchlist check failed: {e}")
+
+    async def _run_check() -> None:
+        try:
+            text = await market_monitor.run_watchlist_check_now()
+            await progress_msg.edit_text(text, parse_mode="HTML")
+        except Exception as e:
+            logger.exception("On-demand watchlist check failed")
+            try:
+                await progress_msg.edit_text(f"Watchlist check failed: {escape_html(str(e))}")
+            except Exception:
+                logger.exception("Failed to report watchlist check failure")
+
+    asyncio.create_task(_run_check())
